@@ -1,0 +1,118 @@
+// Pakufi OS — operational layer only.
+// Leads, contacts, and ICP notes stay in Notion. This schema exists for the
+// things Notion has nowhere to put: agent config, run history, approvals,
+// automation schedules, and the audit trail.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum AgentStatus {
+  IDLE
+  WORKING
+  WAITING
+  NEEDS_APPROVAL
+  BLOCKED
+  OFFLINE
+  ERROR
+}
+
+enum RunStatus {
+  BACKLOG
+  READY
+  IN_PROGRESS
+  WAITING_FOR_APPROVAL
+  BLOCKED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  EDITED
+  REJECTED
+}
+
+// One shared orchestrator, many lightweight persona configs — not one
+// engineered runtime per agent. toolPermissions is the real autonomy control:
+// { "apollo.searchCompanies": "auto", "gmail.sendApprovedDraft": "approve" }
+model AgentDefinition {
+  id              String     @id @default(cuid())
+  name            String     @unique
+  department      String
+  role            String
+  systemPrompt    String
+  toolPermissions Json
+  deskPosition    Json?
+  createdAt       DateTime   @default(now())
+  runs            AgentRun[]
+}
+
+model AgentRun {
+  id          String          @id @default(cuid())
+  agentId     String
+  agent       AgentDefinition @relation(fields: [agentId], references: [id])
+  missionText String
+  status      RunStatus       @default(READY)
+  costUsd     Decimal?        @db.Decimal(10, 4)
+  startedAt   DateTime        @default(now())
+  finishedAt  DateTime?
+  actions     AgentAction[]
+  approvals   Approval[]
+}
+
+// One row per tool call — this is the audit trail behind the activity feed
+// and the "Run" detail view.
+model AgentAction {
+  id        String   @id @default(cuid())
+  runId     String
+  run       AgentRun @relation(fields: [runId], references: [id])
+  stepIndex Int
+  toolUsed  String
+  input     Json
+  output    Json?
+  createdAt DateTime @default(now())
+}
+
+model Approval {
+  id          String         @id @default(cuid())
+  runId       String
+  run         AgentRun       @relation(fields: [runId], references: [id])
+  type        String // "send_email" | "crm_update" | ...
+  payload     Json
+  status      ApprovalStatus @default(PENDING)
+  requestedAt DateTime       @default(now())
+  resolvedAt  DateTime?
+}
+
+// Mirrors the GitHub Actions workflows — this table is a visibility layer
+// over automation that already runs, not a replacement job queue.
+model Automation {
+  id        String    @id @default(cuid())
+  name      String
+  schedule  String
+  lastRunAt DateTime?
+  nextRunAt DateTime?
+}
+
+model KnowledgeSource {
+  id         String @id @default(cuid())
+  title      String
+  type       String // "notion_page" | "file" | "url"
+  location   String
+  department String
+}
+
+model IntegrationConnection {
+  id         String    @id @default(cuid())
+  provider   String // "apollo" | "notion" | "gmail" | "google_calendar"
+  status     String // "connected" | "disconnected" | "needs_reauth"
+  lastSyncAt DateTime?
+}

@@ -1,0 +1,41 @@
+name: Sales morning run
+
+on:
+  schedule:
+    # GitHub Actions cron is UTC-only, and Berlin shifts between UTC+1 and
+    # UTC+2 with daylight saving. Rather than pick one and drift an hour
+    # twice a year, both possible times are scheduled — the guard step
+    # below only lets the one that's actually 9am Berlin time proceed.
+    - cron: "0 7 * * 1-5" # 09:00 Europe/Berlin during CEST (summer)
+    - cron: "0 8 * * 1-5" # 09:00 Europe/Berlin during CET (winter)
+  workflow_dispatch: {} # lets you trigger a run manually too
+
+jobs:
+  run-sales-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm it's actually 9am in Berlin right now (or a manual run)
+        id: guard
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "Manually triggered -- skipping the time-of-day check."
+            exit 0
+          fi
+          HOUR=$(TZ=Europe/Berlin date +%H)
+          if [ "$HOUR" = "09" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "It's $HOUR:00 in Berlin, not 9am -- skipping. The other scheduled trigger covers this half of the year."
+          fi
+
+      - name: Run Lead Scout -> Researcher -> Qualifier -> Outreach
+        if: steps.guard.outputs.proceed == 'true'
+        run: |
+          curl --fail -X POST "$PAKUFI_OS_URL/api/cron/sales-morning-run" \
+            -H "Authorization: Bearer $PAKUFI_OS_CRON_SECRET" \
+            -H "Content-Type: application/json"
+        env:
+          PAKUFI_OS_URL: ${{ secrets.PAKUFI_OS_URL }}
+          PAKUFI_OS_CRON_SECRET: ${{ secrets.PAKUFI_OS_CRON_SECRET }}
