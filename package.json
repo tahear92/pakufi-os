@@ -10,13 +10,13 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",
-    "@prisma/client": "7.10.0",
+    "@prisma/client": "^6.8.0",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"
   },
   "devDependencies": {
-    "prisma": "7.10.0",
+    "prisma": "^6.8.0",
     "typescript": "latest",
     "@types/node": "latest",
     "@types/react": "latest"
