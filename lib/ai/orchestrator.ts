@@ -9,12 +9,37 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 type Persona = (typeof salesPersonas)[number];
 
-// Every tool the Sales personas can use, keyed by the same permission keys
-// used in personas.seed.ts's toolPermissions. All of them are now plain
-// custom tools -- Apollo and Notion moved off MCP (see apollo.ts / notion.ts
-// for why), so there's no more split between "auto-executed by Anthropic"
-// and "executed by this code." Every call passes through the loop below,
-// which means every call could be approval-gated later, not just Gmail's.
+const TOOL_REGISTRY: Record<string, { schema: Record<string, unknown>; execute: (input: any) => Promise<unknown> }> = {
+  "apollo.searchCompanies": {
+    schema: {
+      name: "apollo_search_companies",
+      description: "Search Apollo for companies by location, employee count range, and keywords.",
+      input_schema: {
+        type: "object",
+        properties: {
+          locations: { type: "array", items: { type: "string" } },
+          minEmployees: { type: "number" },
+          maxEmployees: { type: "number" },
+          keywords: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
+    execute: (input) => searchCompanies(input),
+  },
+  "apollo.searchPeople": {
+    schema: {
+cat > "lib/ai/orchestrator.ts" << 'EOF'
+import Anthropic from "@anthropic-ai/sdk";
+import { salesPersonas } from "./personas.seed";
+import { searchCompanies, searchPeople, enrichContact } from "../integrations/apollo";
+import { upsertLead, readLead } from "../integrations/notion";
+import { createDraft, sendApprovedDraft } from "../integrations/gmail";
+import { db } from "../db";
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+type Persona = (typeof salesPersonas)[number];
+
 const TOOL_REGISTRY: Record<string, { schema: Record<string, unknown>; execute: (input: any) => Promise<unknown> }> = {
   "apollo.searchCompanies": {
     schema: {
@@ -119,9 +144,6 @@ const TOOL_REGISTRY: Record<string, { schema: Record<string, unknown>; execute: 
   },
 };
 
-// AgentRun.agentId is a foreign key into AgentDefinition -- upsert against
-// the static seed config to get a real row, since editing personas through
-// a settings UI is explicitly deferred (see personas.seed.ts).
 async function ensureAgentDefinition(persona: Persona) {
   return db.agentDefinition.upsert({
     where: { name: persona.name },
@@ -141,11 +163,6 @@ async function ensureAgentDefinition(persona: Persona) {
   });
 }
 
-// The whole "multi-agent system" is this one function: given a persona and
-// a mission, run a Claude tool-use loop scoped to that persona's prompt and
-// tools, checking toolPermissions before executing anything that isn't
-// "auto". Forty named agents in the product concept map to a handful of
-// these persona configs, not forty separate engineered runtimes.
 export async function runMission(personaName: string, missionText: string) {
   const persona = salesPersonas.find((p) => p.name === personaName);
   if (!persona) throw new Error(`Unknown persona: ${personaName}`);
@@ -170,7 +187,7 @@ export async function runMission(personaName: string, missionText: string) {
       max_tokens: 4096,
       system: persona.systemPrompt,
       messages,
-      tools: toolSchemas as Anthropic.Tool[],
+      tools: toolSchemas as unknown as Anthropic.Tool[],
     });
 
     const toolUseBlocks = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
@@ -186,11 +203,11 @@ export async function runMission(personaName: string, missionText: string) {
 
     for (const block of toolUseBlocks) {
       const permissionKey = toolNameToPermissionKey[block.name];
-      const autonomy = (persona.toolPermissions as Record<string, string>)[permissionKey];
+      const autonomy = (persona.toolPermissions as unknown as Record<string, string>)[permissionKey];
       const registryEntry = TOOL_REGISTRY[permissionKey];
 
       await db.agentAction.create({
-        data: { runId: run.id, stepIndex: stepIndex++, toolUsed: permissionKey, input: block.input as any, output: null },
+        data: { runId: run.id, stepIndex: stepIndex++, toolUsed: permissionKey, input: block.input as any, output: undefined },
       });
 
       if (autonomy === "approve") {
@@ -211,10 +228,6 @@ export async function runMission(personaName: string, missionText: string) {
     }
 
     if (waitingForApproval) {
-      // Stop here. Resuming isn't "continue this Claude conversation" --
-      // when a human approves in the Approval Center, that click calls
-      // gmail.sendApprovedDraft directly with the stored payload. See
-      // app/api/approvals/[id]/route.ts.
       await db.agentRun.update({ where: { id: run.id }, data: { status: "WAITING_FOR_APPROVAL" } });
       return run;
     }
