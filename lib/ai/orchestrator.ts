@@ -132,7 +132,7 @@ async function ensureAgentDefinition(persona: Persona) {
   });
 }
 
-export async function runMission(personaName: string, missionText: string) {
+export async function runMission(personaName: string, missionText: string): Promise<{ id: string; status: string; finalText: string }> {
   const persona = salesPersonas.find((p) => p.name === personaName);
   if (!persona) throw new Error(`Unknown persona: ${personaName}`);
 
@@ -162,8 +162,12 @@ export async function runMission(personaName: string, missionText: string) {
     const toolUseBlocks = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
 
     if (toolUseBlocks.length === 0) {
+      const finalText = response.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("\n\n");
       await db.agentRun.update({ where: { id: run.id }, data: { status: "COMPLETED", finishedAt: new Date() } });
-      return run;
+      return { id: run.id, status: "COMPLETED", finalText };
     }
 
     messages.push({ role: "assistant", content: response.content });
@@ -198,10 +202,9 @@ export async function runMission(personaName: string, missionText: string) {
 
     if (waitingForApproval) {
       await db.agentRun.update({ where: { id: run.id }, data: { status: "WAITING_FOR_APPROVAL" } });
-      return run;
+      return { id: run.id, status: "WAITING_FOR_APPROVAL", finalText: "" };
     }
 
     messages.push({ role: "user", content: toolResults });
   }
 }
-
