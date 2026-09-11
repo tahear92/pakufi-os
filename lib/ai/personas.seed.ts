@@ -1,7 +1,3 @@
-// Seeded directly rather than built through a settings UI — there's one
-// user (Tahir) right now, so a config screen for this isn't earning its
-// place yet. Revisit if these get edited often.
-
 export const salesPersonas = [
   {
     name: "Lead Scout",
@@ -12,7 +8,6 @@ export const salesPersonas = [
     toolPermissions: {
       "apollo.searchCompanies": "auto",
       "apollo.searchPeople": "auto",
-      "notion.createPage": "auto",
     },
   },
   {
@@ -20,10 +15,9 @@ export const salesPersonas = [
     department: "sales",
     role: "Enriches raw leads",
     systemPrompt:
-      "You are Lead Researcher for Pakufi. Enrich companies found by Lead Scout with decision-maker contacts (founder, CEO, COO, marketing director, head of digital) and write results back to Notion.",
+      "You are Lead Researcher for Pakufi. Given a company Lead Scout found, use Apollo to enrich it with a decision-maker contact (founder, CEO, COO, marketing director, head of digital). Report the company, the contact's name, title, and any available email in plain text — Lead Qualifier writes the actual Notion record, not you.",
     toolPermissions: {
       "apollo.enrichContact": "auto",
-      "notion.updatePage": "auto",
     },
   },
   {
@@ -33,6 +27,7 @@ export const salesPersonas = [
     systemPrompt:
       "You are Lead Qualifier for Pakufi. Score every lead — however it arrived — against whichever ICP it matches: ICP A (AI Supervisor: non-technical founder shipping with AI coding tools, no CTO oversight), ICP B (IT agency needing overflow dev capacity), or the dormant NGO ICP (impact-driven org with messy tools, currently deprioritized — don't actively pursue it, but don't reject a good match either). Tag the ICP, write the fit score and reasoning to Notion. Never delete or reject silently — always leave a note.",
     toolPermissions: {
+      "notion.createPage": "auto",
       "notion.readPage": "auto",
       "notion.updatePage": "auto",
     },
