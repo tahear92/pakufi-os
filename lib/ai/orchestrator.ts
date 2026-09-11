@@ -28,37 +28,6 @@ const TOOL_REGISTRY: Record<string, { schema: Record<string, unknown>; execute: 
   },
   "apollo.searchPeople": {
     schema: {
-cat > "lib/ai/orchestrator.ts" << 'EOF'
-import Anthropic from "@anthropic-ai/sdk";
-import { salesPersonas } from "./personas.seed";
-import { searchCompanies, searchPeople, enrichContact } from "../integrations/apollo";
-import { upsertLead, readLead } from "../integrations/notion";
-import { createDraft, sendApprovedDraft } from "../integrations/gmail";
-import { db } from "../db";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-type Persona = (typeof salesPersonas)[number];
-
-const TOOL_REGISTRY: Record<string, { schema: Record<string, unknown>; execute: (input: any) => Promise<unknown> }> = {
-  "apollo.searchCompanies": {
-    schema: {
-      name: "apollo_search_companies",
-      description: "Search Apollo for companies by location, employee count range, and keywords.",
-      input_schema: {
-        type: "object",
-        properties: {
-          locations: { type: "array", items: { type: "string" } },
-          minEmployees: { type: "number" },
-          maxEmployees: { type: "number" },
-          keywords: { type: "array", items: { type: "string" } },
-        },
-      },
-    },
-    execute: (input) => searchCompanies(input),
-  },
-  "apollo.searchPeople": {
-    schema: {
       name: "apollo_search_people",
       description: "Search Apollo for people by title and organization domain.",
       input_schema: {
@@ -235,3 +204,4 @@ export async function runMission(personaName: string, missionText: string) {
     messages.push({ role: "user", content: toolResults });
   }
 }
+
